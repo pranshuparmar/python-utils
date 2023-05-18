@@ -73,7 +73,7 @@ def get_domain_links_recursive(url, domains, disallowed_urls, headers, visited=N
                 # Check if the URL is present in disallowed URLs from robots.txt
                 if any(disallowed_url in absolute_url for disallowed_url in disallowed_urls):
                     print("Disallowed URL found, skipping url: ", absolute_url)
-                    return visited
+                    continue
 
                 # Check if the URL ends with any word starting with '#'
                 if not any(absolute_url.endswith(f'#{word}') for word in parsed_url.fragment.split()):
