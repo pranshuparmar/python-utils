@@ -28,7 +28,7 @@ def is_website_url(url):
 
 
 # Function to get links associated with a domain (recursively)
-def get_domain_links_recursive(url, domains, disallowed_urls, headers, visited=None):
+def get_domain_links_recursive(url, domains, allowed_urls, disallowed_urls, headers, visited=None):
     if visited is None:
         visited = set()
 
@@ -70,8 +70,11 @@ def get_domain_links_recursive(url, domains, disallowed_urls, headers, visited=N
 
             # Check if the netloc (domain) matches the desired domain
             if parsed_url.netloc in domains:
+                # Check if the URL is explicitly allowed in robots.txt
+                if any(allowed_url in absolute_url for allowed_url in allowed_urls):
+                    pass
                 # Check if the URL is present in disallowed URLs from robots.txt
-                if any(disallowed_url in absolute_url for disallowed_url in disallowed_urls):
+                elif any(disallowed_url in absolute_url for disallowed_url in disallowed_urls):
                     print("Disallowed URL found, skipping url: ", absolute_url)
                     continue
 
@@ -87,11 +90,11 @@ def get_domain_links_recursive(url, domains, disallowed_urls, headers, visited=N
 
                         if is_website_url(absolute_url):
                             # Recursively call the function on the absolute URL
-                            get_domain_links_recursive(absolute_url, domains, disallowed_urls, headers, visited)
+                            get_domain_links_recursive(absolute_url, domains, allowed_urls, disallowed_urls, headers, visited)
     return visited
 
 
-def is_url_allowed(url, headers, disallowed_paths):
+def is_url_allowed(url, headers, allowed_paths, disallowed_paths):
     parsed_url = urlparse(url)
     robots_url = f"{parsed_url.scheme}://{parsed_url.netloc}/robots.txt"
 
@@ -101,30 +104,34 @@ def is_url_allowed(url, headers, disallowed_paths):
         robots_content = response.text
 
         for line in robots_content.split('\n'):
-            if line.strip() == 'Disallow:':
+            if line.strip() == 'Disallow:' or line.strip() == 'Allow:':
                 continue
             elif line.startswith('Disallow:'):
-                disallowed_path = line.split(': ')[1].strip()
+                disallowed_path = line.split(':')[1].strip()
                 disallowed_paths.append(disallowed_path)
+            elif line.startswith('Allow:'):
+                allowed_path = line.split(':')[1].strip()
+                allowed_paths.append(allowed_path)
 
         for disallowed_path in disallowed_paths:
             if disallowed_path == '/':
-                return False, []
-            elif parsed_url.path.startswith(disallowed_path):
-                return False, []
+                return False, [], []
+            elif parsed_url.path.startswith(disallowed_path) and not any(parsed_url.path.startswith(path) for path in allowed_paths):
+                return False, [], []
 
-        return True, disallowed_paths
+        return True, allowed_paths, disallowed_paths
 
     except requests.exceptions.RequestException:
-        return True, []  # Allow access if there is an error retrieving robots.txt
+        return True, [], []  # Allow access if there is an error retrieving robots.txt
 
 
 def scrape_website(url):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
     }
+    allowed_paths = []
     disallowed_paths = []
-    is_allowed, disallowed_urls = is_url_allowed(url, headers, disallowed_paths)
+    is_allowed, allowed_paths, disallowed_paths = is_url_allowed(url, headers, allowed_paths, disallowed_paths)
     if is_allowed:
         domains = []
         parsed_url = urlparse(url)
@@ -133,7 +140,7 @@ def scrape_website(url):
             domains.append('www.' + parsed_url.netloc)
 
         # Call the function to get the domain links recursively
-        links = get_domain_links_recursive(url, domains, disallowed_urls, headers)
+        links = get_domain_links_recursive(url, domains, allowed_paths, disallowed_paths, headers)
 
         # Print the list of links
         print("Final list: ")
@@ -145,5 +152,5 @@ def scrape_website(url):
 
 if __name__ == '__main__':
     # The URL to scrape
-    url = 'https://google.com'
+    url = 'https://hubengage.com'
     scrape_website(url)
